@@ -21,3 +21,12 @@ export type Country = {
     alt: string;
   };
 };
+
+export type UserLocation = {
+  ip: string;
+  city: string;
+  region: string;
+  country: string;
+  latitude: number;
+  longitude: number;
+};

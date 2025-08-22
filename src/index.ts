@@ -2,7 +2,7 @@
 import { greetUser } from '$utils/greet';
 
 // types
-import type { Country } from './types/index';
+import type { Country, UserLocation } from './types/index';
 
 window.Webflow ||= [];
 // assures DOM + Webflow are ready...
@@ -13,12 +13,12 @@ window.Webflow.push(async () => {
   /* 
 		- clone country select option as template
 		- FETCH countries API w counryCode, name, flag, phonePrefix...
-		- format 
-		- populate countries select
+		- format res response to arr objs
+		- populate countries select options
 		- get user location 
 		- preselect expected country code/prefix
 		- make sure selected prefix uses webflow's native CURRENT (+ populate hidden op w countryCode)
-		- on select open, make sure selected country is visible + centered 
+		- on select open, make sure selected country is visible + centered - $0.scrollIntoView() 
 		- add ability to type in options dropdown (ABC)
 		- add keyboard nav (up/down/space/tab)
 		- add correct ARIA attrs 
@@ -26,11 +26,17 @@ window.Webflow.push(async () => {
 	*/
 
   let countries = await fetchCountries();
-  console.log('countries', countries);
+  console.debug('countries', countries);
 
   countries = filterSortCountries(countries);
 
   populateDropdownOptions(countries);
+
+  preselectCountryFromLocation(countries);
+
+  initKeys();
+
+  setupDropdownToggleWatcher();
 
   injectStyles();
 
@@ -67,11 +73,18 @@ function filterSortCountries(countries: Country[]): Country[] {
   return countries.sort((a, b) => a.name.common.localeCompare(b.name.common));
 }
 
+let pList: HTMLDivElement;
+let pOptions: HTMLAnchorElement[];
+let lastSelectedP: HTMLAnchorElement;
+let selectedIdx: number, // for active
+  preselectedIdx: number = -1; // for focus (CSS)
+
 function populateDropdownOptions(countries: Country[]) {
-  console.log('populateDropdownOptions');
+  console.debug('populateDropdownOptions');
 
   const pListWrap = document.querySelector('.prefix-dropdown_list-wrapper') as HTMLDivElement;
-  const pList = pListWrap.querySelector('.prefix-dropdown_list') as HTMLDivElement;
+  // const pList = pListWrap.querySelector('.prefix-dropdown_list') as HTMLDivElement;
+  pList = pListWrap.querySelector('.prefix-dropdown_list') as HTMLDivElement;
   const pOptionTemplate = pList.querySelector('.prefix-dropdown_item') as HTMLOptionElement;
   pOptionTemplate.remove(); // bye bye placeholder
   // console.log('pList', pList);
@@ -91,16 +104,19 @@ function populateDropdownOptions(countries: Country[]) {
     pOption.setAttribute('data-country-prefix', c.idd.root + c.idd.suffixes[0]);
 
     pOption.addEventListener('click', () => {
-      console.log('pOption clicked', pOption);
+      console.debug('pOption clicked', pOption);
       updateActiveCountry(c);
+      // NOW can use $0.click() to select any (ex: w keyboard nav or programmatically anywhere)
     });
 
     pList.appendChild(pOption);
   }
+
+  pOptions = Array.from<HTMLAnchorElement>(pList.querySelectorAll('.prefix-dropdown_item'));
 }
 
 function updateActiveCountry(c: Country) {
-  console.log('updateActiveCountry', c);
+  console.debug('updateActiveCountry', c);
 
   const pDropdownToggle = document.querySelector('.prefix-dropdown_toggle') as HTMLDivElement;
   const pActiveFlag = pDropdownToggle.querySelector('.prefix-dropdown_flag') as HTMLImageElement;
@@ -118,29 +134,36 @@ function updateActiveCountry(c: Country) {
   const hiddenField = document.querySelector('input[name="countryCode"]') as HTMLInputElement;
   hiddenField.value = c.cca2;
 
-  // QUICK N DIRTY SHIM FOR SELECT...
+  // QUICK SHIM FOR "native" SELECT...
   // update selected in options (aria + w--current)
-  const pList = document.querySelector('.prefix-dropdown_list') as HTMLDivElement;
-  const pOptions = pList.querySelectorAll('.prefix-dropdown_item') as NodeListOf<HTMLOptionElement>;
+  // const pList = document.querySelector('.prefix-dropdown_list') as HTMLDivElement;
+  // const pOptions = pList.querySelectorAll('.prefix-dropdown_item') as NodeListOf<HTMLOptionElement>;
   for (const pOption of pOptions) {
     pOption.classList.remove('w--current');
     pOption.setAttribute('aria-selected', 'false');
     if (pOption.getAttribute('data-country-prefix') === prefixTxt) {
       pOption.classList.add('w--current');
       pOption.setAttribute('aria-selected', 'true');
+      selectedIdx = pOptions.indexOf(pOption);
     }
   }
-  // TODO update w: $0.jQuery3510245795163373337072['.wDropdown'].selectedIdx = 1
+  // TODO find out real native way to dispatch webflow select event.. like: $0.dispatchEvent(new Event('w-select', { bubbles: true, data: idx }))
+  // TODO update to: $0.jQuery3510245795163373337072['.wDropdown'].selectedIdx = 1
 
   closeDropdown();
 }
 
 function closeDropdown() {
   const pDropdownComponent = document.querySelector('.prefix-dropdown_component') as HTMLDivElement;
-  pDropdownComponent.dispatchEvent(new Event('w-close', { bubbles: true }));
+  pDropdownComponent.dispatchEvent(new Event('w-close', { bubbles: true })); // webflow event trick (theres probably one for a simpler select also...)
+
+  // per spec, focus prefix toggle after close:
+  const pDropdownToggle = document.querySelector('.prefix-dropdown_toggle') as HTMLDivElement;
+  pDropdownToggle.focus();
 }
 
 function injectStyles() {
+  // some fun style like anim in/out of dropdown + rainbow btn focus
   const style = document.createElement('style');
   style.textContent = `
 		.prefix-dropdown_list-wrapper { 
@@ -156,7 +179,130 @@ function injectStyles() {
 			opacity: 1;
 			transform: translateY(0px);
 		}
+
+		#btn-submit:focus {
+			animation: rainbowFade 2s linear infinite alternate;
+		}
+		@keyframes rainbowFade {
+			0% 	{ background-color: hsl(0,   100%, 35%); }  
+			20% { background-color: hsl(60,  100%, 35%); }
+			40% { background-color: hsl(120, 100%, 35%); }   
+			60% { background-color: hsl(180, 100%, 35%); } 
+			80% { background-color: hsl(240, 100%, 35%); }  
+			100%{ background-color: hsl(300, 100%, 35%); }
+		}
 	`;
-  style.id = 'sc-prefix-dropdown-styles';
+  style.id = 'prefix-dropdown-styles_sc';
   document.head.appendChild(style);
+}
+
+async function getUserLocation(): Promise<UserLocation> {
+  // get user location (> navigator.geolocation)
+  try {
+    const res = await fetch('https://ipapi.co/json/');
+    const json = await res.json();
+    // console.debug('getUserLocation json', json);
+    return json;
+  } catch (e) {
+    throw new Error('Failed to fetch user location', { cause: e });
+  }
+}
+
+async function preselectCountryFromLocation(countries: Country[]) {
+  const userLocation = await getUserLocation();
+  console.debug('userLocation', userLocation);
+
+  // preselect expected country from location
+  const expectedCountry = countries.find((c) => c.cca2 === userLocation.country);
+  if (expectedCountry) {
+    updateActiveCountry(expectedCountry);
+  }
+}
+
+function initKeys() {
+  console.debug('initKeys');
+
+  pList.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      console.debug('ArrowDown');
+      e.preventDefault();
+
+      preselectedIdx = (preselectedIdx + 1) % pOptions.length;
+      pOptions[preselectedIdx].focus();
+    } else if (e.key === 'ArrowUp') {
+      console.debug('ArrowUp');
+      e.preventDefault();
+
+      preselectedIdx = preselectedIdx - 1;
+      if (preselectedIdx === -1) {
+        preselectedIdx = pOptions.length - 1;
+      }
+      pOptions[preselectedIdx].focus();
+    } else if (/^[a-zA-Z]$/.test(e.key)) {
+      // regex for letter keys
+      const letter = e.key.toLowerCase();
+      console.debug('LetterDown:', letter);
+
+      //find first country option that starts with this letter
+      const matchingIndex = pOptions.findIndex((c) => {
+        const text = c.getAttribute('data-country-name')?.toLowerCase() || '';
+        return text.startsWith(letter);
+      });
+
+      if (matchingIndex !== -1) {
+        preselectedIdx = matchingIndex;
+        pOptions[preselectedIdx].focus();
+      }
+    }
+  });
+}
+
+// native JS watcher for w--open (verbose but works)
+function setupDropdownToggleWatcher() {
+  const dropdownToggle = document.querySelector('.prefix-dropdown_toggle') as HTMLElement;
+
+  if (!dropdownToggle) {
+    console.warn('.prefix-dropdown_toggle element not found');
+    return;
+  }
+
+  // Create a MutationObserver to watch for class changes
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        const target = mutation.target as HTMLElement;
+        if (target.classList.contains('w--open')) {
+          // Hook: Run function when w--open class is added
+          onDropdownOpen();
+        } else {
+          onDropdownClosed();
+        }
+      }
+    });
+  });
+
+  // Start observing the dropdown toggle element
+  observer.observe(dropdownToggle, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+}
+
+function onDropdownOpen() {
+  console.debug('Dropdown OPEN');
+
+  lastSelectedP = pList.querySelector('.w--current') as HTMLAnchorElement;
+  selectedIdx = pOptions.indexOf(lastSelectedP);
+  preselectedIdx = selectedIdx;
+
+  setTimeout(() => {
+    // .focus automatically scrolls the option to be visible
+    lastSelectedP?.focus();
+  }, 100); // needs a couple ticks to focus right... (barely noticeable)
+}
+
+function onDropdownClosed() {
+  console.debug('Dropdown CLOSED');
+
+  // remove
 }
