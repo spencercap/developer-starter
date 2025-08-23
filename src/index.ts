@@ -1,3 +1,5 @@
+import { AsYouType, type CountryCode } from 'libphonenumber-js';
+
 // modules
 import { greetUser } from '$utils/greet';
 
@@ -89,8 +91,8 @@ function populateDropdownOptions(countries: Country[]) {
   pList = pListWrap.querySelector('.prefix-dropdown_list') as HTMLDivElement;
   const pOptionTemplate = pList.querySelector('.prefix-dropdown_item') as HTMLOptionElement;
   pOptionTemplate.remove(); // bye bye placeholder
-  // console.log('pList', pList);
-  // console.log('pOptionTemplate', pOptionTemplate);
+  // console.debug('pList', pList);
+  // console.debug('pOptionTemplate', pOptionTemplate);
 
   for (const c of countries) {
     const pOption = pOptionTemplate.cloneNode(true) as HTMLOptionElement;
@@ -105,7 +107,13 @@ function populateDropdownOptions(countries: Country[]) {
     pOption.title = c.name.common; // quick n dirty tooltip
     pOption.setAttribute('aria-label', c.name.common);
     pOption.setAttribute('data-country-name', c.name.common);
-    pOption.setAttribute('data-country-prefix', c.idd.root + c.idd.suffixes[0]);
+    let countryCode: string;
+    if (c.idd.suffixes.length === 1) {
+      countryCode = c.idd.root + c.idd.suffixes[0];
+    } else {
+      countryCode = c.idd.root;
+    }
+    pOption.setAttribute('data-country-prefix', countryCode);
 
     pOption.addEventListener('click', () => {
       console.debug('pOption clicked', pOption);
@@ -131,12 +139,17 @@ function updateActiveCountry(c: Country) {
   pOptionFlagEmoji.innerText = c.flag;
   pActiveFlag.src = c.flags.svg || c.flags.png;
   pActiveFlag.alt = c.flags.alt || `Flag: ${c.name.common}`;
-  const prefixTxt = c.idd.root + c.idd.suffixes[0];
-  pActiveTxt.textContent = prefixTxt;
+  let countryCode: string;
+  if (c.idd.suffixes.length === 1) {
+    countryCode = c.idd.root + c.idd.suffixes[0];
+  } else {
+    countryCode = c.idd.root;
+  }
+  pActiveTxt.textContent = countryCode;
   pDropdownToggle.title = c.name.common;
   pDropdownToggle.setAttribute('aria-label', c.name.common);
   pDropdownToggle.setAttribute('data-country-name', c.name.common);
-  pDropdownToggle.setAttribute('data-country-prefix', c.idd.root + c.idd.suffixes[0]);
+  pDropdownToggle.setAttribute('data-country-prefix', countryCode);
 
   // set hidden field w country code
   const hiddenField = document.querySelector('input[name="countryCode"]') as HTMLInputElement;
@@ -149,7 +162,7 @@ function updateActiveCountry(c: Country) {
   for (const pOption of pOptions) {
     pOption.classList.remove('w--current');
     pOption.setAttribute('aria-selected', 'false');
-    if (pOption.getAttribute('data-country-prefix') === prefixTxt) {
+    if (pOption.getAttribute('data-country-prefix') === countryCode) {
       pOption.classList.add('w--current');
       pOption.setAttribute('aria-selected', 'true');
       selectedIdx = pOptions.indexOf(pOption);
@@ -157,6 +170,12 @@ function updateActiveCountry(c: Country) {
   }
   // TODO find out real native way to dispatch webflow select event.. like: $0.dispatchEvent(new Event('w-select', { bubbles: true, data: idx }))
   // TODO update to: $0.jQuery3510245795163373337072['.wDropdown'].selectedIdx = 1
+
+  const opFormatNumber = document.querySelector('#opFormatNumber') as HTMLInputElement;
+  if (opFormatNumber.checked) {
+    const numberInput = document.querySelector('#phoneNumber') as HTMLInputElement;
+    formatPhoneNumber(numberInput);
+  }
 
   closeDropdown();
 }
@@ -318,6 +337,7 @@ function onDropdownClosed() {
 function initAdditionalOptions() {
   console.debug('initAdditionalOptions');
 
+  // flags
   const imgFlags = document.querySelectorAll('.prefix-dropdown_flag');
   const emojiFlags = document.querySelectorAll('.prefix-dropdown_flag-emoji');
   const opEmojiFlags = document.querySelector('#opEmojiFlags') as HTMLInputElement;
@@ -330,4 +350,45 @@ function initAdditionalOptions() {
       emojiFlags.forEach((flag) => flag.classList.add('hidden'));
     }
   });
+
+  // number formatting
+  const opFormatNumber = document.querySelector('#opFormatNumber') as HTMLInputElement;
+  const numberInput = document.querySelector('#phoneNumber') as HTMLInputElement;
+  numberInput.addEventListener('input', () => {
+    if (opFormatNumber.checked) {
+      formatPhoneNumber(numberInput);
+    }
+  });
+
+  // shim to fix not being able to backspace over inserted parens or dashes
+  numberInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace') {
+      const cursorPos = numberInput.selectionStart!;
+      const nIn = numberInput.value;
+
+      // regex for: ( ) - \
+      if (/[()\-\s]/.test(nIn[cursorPos - 1])) {
+        e.preventDefault();
+
+        // Remove that symbol manually
+        numberInput.value = nIn.slice(0, cursorPos - 1) + nIn.slice(cursorPos);
+      }
+    }
+  });
+}
+
+function formatPhoneNumber(nInput: HTMLInputElement) {
+  const nIn = nInput.value;
+  const ccEl = document.querySelector('input[name="countryCode"]') as HTMLInputElement;
+  const countryCode = ccEl.value as CountryCode | null; // set from cca2
+  if (!countryCode) {
+    console.warn('No country code found to format number by');
+    return;
+  }
+
+  // create a NEW instance because there is no .setCountry method
+  const formatter = new AsYouType(countryCode);
+  const nOut = formatter.input(nIn);
+  // console.debug('nOut', nOut);
+  nInput.value = nOut;
 }
