@@ -36,6 +36,8 @@ window.Webflow.push(async () => {
 
   initKeys();
 
+  initAdditionalOptions();
+
   setupDropdownToggleWatcher();
 
   injectStyles();
@@ -94,9 +96,11 @@ function populateDropdownOptions(countries: Country[]) {
     const pOption = pOptionTemplate.cloneNode(true) as HTMLOptionElement;
     const pOptionTxt = pOption.querySelector('.prefix-dropdown_txt') as HTMLDivElement;
     const pOptionFlag = pOption.querySelector('.prefix-dropdown_flag') as HTMLImageElement;
-    // TODO make emoji flag toggle option
+    const pOptionFlagEmoji = pOption.querySelector('.prefix-dropdown_flag-emoji') as HTMLDivElement;
+    pOptionFlagEmoji.innerText = c.flag;
     pOptionFlag.src = c.flags.svg || c.flags.png;
     pOptionFlag.alt = c.flags.alt || `Flag: ${c.name.common}`;
+    pOptionFlagEmoji.textContent = c.flag;
     pOptionTxt.textContent = c.cca2;
     pOption.title = c.name.common; // quick n dirty tooltip
     pOption.setAttribute('aria-label', c.name.common);
@@ -121,6 +125,10 @@ function updateActiveCountry(c: Country) {
   const pDropdownToggle = document.querySelector('.prefix-dropdown_toggle') as HTMLDivElement;
   const pActiveFlag = pDropdownToggle.querySelector('.prefix-dropdown_flag') as HTMLImageElement;
   const pActiveTxt = pDropdownToggle.querySelector('.prefix-dropdown_txt') as HTMLDivElement;
+  const pOptionFlagEmoji = pDropdownToggle.querySelector(
+    '.prefix-dropdown_flag-emoji'
+  ) as HTMLDivElement;
+  pOptionFlagEmoji.innerText = c.flag;
   pActiveFlag.src = c.flags.svg || c.flags.png;
   pActiveFlag.alt = c.flags.alt || `Flag: ${c.name.common}`;
   const prefixTxt = c.idd.root + c.idd.suffixes[0];
@@ -305,4 +313,21 @@ function onDropdownClosed() {
   console.debug('Dropdown CLOSED');
 
   // remove
+}
+
+function initAdditionalOptions() {
+  console.debug('initAdditionalOptions');
+
+  const imgFlags = document.querySelectorAll('.prefix-dropdown_flag');
+  const emojiFlags = document.querySelectorAll('.prefix-dropdown_flag-emoji');
+  const opEmojiFlags = document.querySelector('#opEmojiFlags') as HTMLInputElement;
+  opEmojiFlags.addEventListener('change', () => {
+    if (opEmojiFlags.checked) {
+      imgFlags.forEach((flag) => flag.classList.add('hidden'));
+      emojiFlags.forEach((flag) => flag.classList.remove('hidden'));
+    } else {
+      imgFlags.forEach((flag) => flag.classList.remove('hidden'));
+      emojiFlags.forEach((flag) => flag.classList.add('hidden'));
+    }
+  });
 }
