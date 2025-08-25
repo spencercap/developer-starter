@@ -6,6 +6,13 @@ import { greetUser } from '$utils/greet';
 // types
 import type { Country, UserLocation } from './types/index';
 
+// reused vars
+let pList: HTMLDivElement;
+let pOptions: HTMLAnchorElement[];
+let lastSelectedP: HTMLAnchorElement;
+let selectedIdx: number, // for active
+  preselectedIdx: number = -1; // for focus (CSS)
+
 window.Webflow ||= [];
 // assures DOM + Webflow are ready...
 window.Webflow.push(async () => {
@@ -71,12 +78,6 @@ function filterSortCountries(countries: Country[]): Country[] {
   // sort countries by name.common ABC
   return countries.sort((a, b) => a.name.common.localeCompare(b.name.common));
 }
-
-let pList: HTMLDivElement;
-let pOptions: HTMLAnchorElement[];
-let lastSelectedP: HTMLAnchorElement;
-let selectedIdx: number, // for active
-  preselectedIdx: number = -1; // for focus (CSS)
 
 function populateDropdownOptions(countries: Country[]) {
   console.debug('populateDropdownOptions');
