@@ -1,4 +1,4 @@
-import { AsYouType, type CountryCode } from 'libphonenumber-js';
+import { AsYouType, type CountryCode } from 'libphonenumber-js'; // FYI this lib helps add bonus sugar on top of the original ask - the challenge is fully solved without it.
 
 // modules
 import { greetUser } from '$utils/greet';
@@ -13,6 +13,7 @@ window.Webflow.push(async () => {
   greetUser(name);
 
   /* 
+    TASK:
 		- clone country select option as template
 		- FETCH countries API w counryCode, name, flag, phonePrefix...
 		- format res response to arr objs
@@ -28,21 +29,14 @@ window.Webflow.push(async () => {
 	*/
 
   let countries = await fetchCountries();
-  console.debug('countries', countries);
-
   countries = filterSortCountries(countries);
-
   populateDropdownOptions(countries);
-
   preselectCountryFromLocation(countries);
-
   initKeys();
-
   initAdditionalOptions();
-
   setupDropdownToggleWatcher();
-
   injectStyles();
+  injectLiquidGlass();
 
   // eslint-disable-next-line no-console
   console.log(
@@ -64,6 +58,7 @@ async function fetchCountries() {
   try {
     const res = await fetch(`${baseUrl}?fields=${fields.join(',')}`);
     const json: Promise<Country[]> = await res.json();
+    console.debug('countries', json);
     return json;
   } catch (e) {
     throw new Error('Failed to fetch countries', { cause: e });
@@ -99,20 +94,16 @@ function populateDropdownOptions(countries: Country[]) {
     const pOptionTxt = pOption.querySelector('.prefix-dropdown_txt') as HTMLDivElement;
     const pOptionFlag = pOption.querySelector('.prefix-dropdown_flag') as HTMLImageElement;
     const pOptionFlagEmoji = pOption.querySelector('.prefix-dropdown_flag-emoji') as HTMLDivElement;
+
     pOptionFlagEmoji.innerText = c.flag;
     pOptionFlag.src = c.flags.svg || c.flags.png;
     pOptionFlag.alt = c.flags.alt || `Flag: ${c.name.common}`;
     pOptionFlagEmoji.textContent = c.flag;
     pOptionTxt.textContent = c.cca2;
     pOption.title = c.name.common; // quick n dirty tooltip
+    const countryCode = c.idd.suffixes.length === 1 ? c.idd.root + c.idd.suffixes[0] : c.idd.root;
     pOption.setAttribute('aria-label', c.name.common);
     pOption.setAttribute('data-country-name', c.name.common);
-    let countryCode: string;
-    if (c.idd.suffixes.length === 1) {
-      countryCode = c.idd.root + c.idd.suffixes[0];
-    } else {
-      countryCode = c.idd.root;
-    }
     pOption.setAttribute('data-country-prefix', countryCode);
 
     pOption.addEventListener('click', () => {
@@ -136,15 +127,11 @@ function updateActiveCountry(c: Country) {
   const pOptionFlagEmoji = pDropdownToggle.querySelector(
     '.prefix-dropdown_flag-emoji'
   ) as HTMLDivElement;
+
   pOptionFlagEmoji.innerText = c.flag;
   pActiveFlag.src = c.flags.svg || c.flags.png;
   pActiveFlag.alt = c.flags.alt || `Flag: ${c.name.common}`;
-  let countryCode: string;
-  if (c.idd.suffixes.length === 1) {
-    countryCode = c.idd.root + c.idd.suffixes[0];
-  } else {
-    countryCode = c.idd.root;
-  }
+  const countryCode = c.idd.suffixes.length === 1 ? c.idd.root + c.idd.suffixes[0] : c.idd.root;
   pActiveTxt.textContent = countryCode;
   pDropdownToggle.title = c.name.common;
   pDropdownToggle.setAttribute('aria-label', c.name.common);
@@ -157,8 +144,6 @@ function updateActiveCountry(c: Country) {
 
   // QUICK SHIM FOR "native" SELECT...
   // update selected in options (aria + w--current)
-  // const pList = document.querySelector('.prefix-dropdown_list') as HTMLDivElement;
-  // const pOptions = pList.querySelectorAll('.prefix-dropdown_item') as NodeListOf<HTMLOptionElement>;
   for (const pOption of pOptions) {
     pOption.classList.remove('w--current');
     pOption.setAttribute('aria-selected', 'false');
@@ -169,7 +154,7 @@ function updateActiveCountry(c: Country) {
     }
   }
   // TODO find out real native way to dispatch webflow select event.. like: $0.dispatchEvent(new Event('w-select', { bubbles: true, data: idx }))
-  // TODO update to: $0.jQuery3510245795163373337072['.wDropdown'].selectedIdx = 1
+  // possibly... $0.jQuery3510245795163373337072['.wDropdown'].selectedIdx = 1
 
   const opFormatNumber = document.querySelector('#opFormatNumber') as HTMLInputElement;
   if (opFormatNumber.checked) {
@@ -211,12 +196,12 @@ function injectStyles() {
 			animation: rainbowFade 2s linear infinite alternate;
 		}
 		@keyframes rainbowFade {
-			0% 	{ background-color: hsl(0,   100%, 35%); }  
-			20% { background-color: hsl(60,  100%, 35%); }
-			40% { background-color: hsl(120, 100%, 35%); }   
-			60% { background-color: hsl(180, 100%, 35%); } 
-			80% { background-color: hsl(240, 100%, 35%); }  
-			100%{ background-color: hsl(300, 100%, 35%); }
+			0% 	{ background-color: hsl(0,   50%, 75%); }  
+			20% { background-color: hsl(60,  50%, 75%); }
+			40% { background-color: hsl(120, 50%, 75%); }   
+			60% { background-color: hsl(180, 50%, 75%); } 
+			80% { background-color: hsl(240, 50%, 75%); }  
+			100%{ background-color: hsl(300, 50%, 75%); }
 		}
 	`;
   style.id = 'prefix-dropdown-styles_sc';
@@ -330,8 +315,6 @@ function onDropdownOpen() {
 
 function onDropdownClosed() {
   console.debug('Dropdown CLOSED');
-
-  // remove
 }
 
 function initAdditionalOptions() {
@@ -354,6 +337,13 @@ function initAdditionalOptions() {
   // number formatting
   const opFormatNumber = document.querySelector('#opFormatNumber') as HTMLInputElement;
   const numberInput = document.querySelector('#phoneNumber') as HTMLInputElement;
+  // when its toggled, format any pre-existing input number
+  opFormatNumber.addEventListener('change', () => {
+    if (opFormatNumber.checked) {
+      formatPhoneNumber(numberInput);
+    }
+  });
+  // also format on typing
   numberInput.addEventListener('input', () => {
     if (opFormatNumber.checked) {
       formatPhoneNumber(numberInput);
@@ -375,6 +365,16 @@ function initAdditionalOptions() {
       }
     }
   });
+
+  // liquid glass
+  const opLiquidGlass = document.querySelector('#opGlassy') as HTMLInputElement;
+  opLiquidGlass.addEventListener('change', () => {
+    if (opLiquidGlass.checked) {
+      enableLiquidGlass(true);
+    } else {
+      enableLiquidGlass(false);
+    }
+  });
 }
 
 function formatPhoneNumber(nInput: HTMLInputElement) {
@@ -389,6 +389,106 @@ function formatPhoneNumber(nInput: HTMLInputElement) {
   // create a NEW instance because there is no .setCountry method
   const formatter = new AsYouType(countryCode);
   const nOut = formatter.input(nIn);
-  // console.debug('nOut', nOut);
+  console.debug('nOut', nOut);
   nInput.value = nOut;
+}
+
+function injectLiquidGlass() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .liquid-glass-wrapper {
+      position: relative;
+      display: flex;
+      font-weight: 600;
+      border-radius: 30px;
+      color: #fff;
+      box-shadow: 0 6px 6px rgba(0, 0, 0, 0.2), 0 0 20px rgba(0, 0, 0, 0.1);
+      transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+    }
+    .liquid-glass-wrapper .phone-form_form,
+    .liquid-glass-wrapper .w-input {
+      background: transparent;
+      border-color: transparent;
+    }
+    .liquid-glass-wrapper #btn-submit {
+      background-color: #ffffff94;
+      color: #4d4d4d;
+      /* border: 2px solid #4d4d4d; */
+      border-radius: 30px;
+    }
+    .liquid-glass-wrapper .prefix-dropdown_list {
+      background: transparent;
+      position: relative;
+      border-radius: 30px;
+      z-index: 3;
+    }
+    .liquid-glass-wrapper #phoneNumber::placeholder {
+      color: #0003;
+    }
+    .liquid-glass-effect {
+      position: absolute;
+      z-index: 0;
+      inset: 0;
+      border-radius: 30px;
+      backdrop-filter: blur(3px);
+      filter: url('#glass-distortion');
+      overflow: hidden;
+      isolation: isolate;
+      pointer-events: none;
+    }
+    .liquid-glass-tint {
+      z-index: 1;
+      position: absolute;
+      inset: 0;
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.25);
+      pointer-events: none;
+    }
+    .liquid-glass-shine {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      border-radius: 30px;
+      overflow: hidden;
+      box-shadow: inset 2px 2px 1px 0 rgba(255, 255, 255, 0.5),
+        inset -1px -1px 1px 1px rgba(255, 255, 255, 0.5);
+      pointer-events: none;
+    }
+  `;
+  style.id = 'liquid-glass-styles_sc';
+  document.head.appendChild(style);
+  // FYI svg code w filter is inserted on webflow side
+
+  initMouseMove();
+}
+
+function enableLiquidGlass(willEnable: boolean) {
+  const form = document.querySelector('.phone-form_component') as HTMLFormElement;
+  const liquidGlassEffect = form.querySelector('.liquid-glass-effect') as HTMLDivElement;
+  const liquidGlassTint = form.querySelector('.liquid-glass-tint') as HTMLDivElement;
+  const liquidGlassShine = form.querySelector('.liquid-glass-shine') as HTMLDivElement;
+
+  if (willEnable) {
+    document.body.classList.add('body-coloured');
+    form.classList.add('liquid-glass-wrapper');
+    liquidGlassEffect.style.display = 'block';
+    liquidGlassTint.style.display = 'block';
+    liquidGlassShine.style.display = 'block';
+    window.liquidGlassEnabled = true; // not the best practice to extend window but theres no state mgmt for this simple code challenge
+  } else {
+    document.body.classList.remove('body-coloured');
+    form.classList.remove('liquid-glass-wrapper');
+    liquidGlassEffect.style.display = 'none';
+    liquidGlassTint.style.display = 'none';
+    liquidGlassShine.style.display = 'none';
+    window.liquidGlassEnabled = false;
+  }
+}
+
+function initMouseMove() {
+  document.addEventListener('mousemove', (e) => {
+    if (!window.liquidGlassEnabled) return;
+    const scale = 0.1;
+    document.body.style.backgroundPosition = `${e.clientX * scale}px ${e.clientY * scale}px`;
+  });
 }

@@ -30,3 +30,10 @@ export type UserLocation = {
   latitude: number;
   longitude: number;
 };
+
+// Extend Window interface to include custom properties
+declare global {
+  interface Window {
+    liquidGlassEnabled: boolean;
+  }
+}
